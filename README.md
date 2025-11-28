@@ -8,6 +8,16 @@ Maintained by [Paul Kastelijn](https://github.com/paulkastelijn) — last update
 
 This project provides a complete [ESPHome](https://esphome.io/) configuration to build a smart Electric Vehicle Supply Equipment (EVSE) controller using a Waveshare ESP32-S3 board (like the Waveshare ESP32-S3-Relay-CH6 relay board). It turns a standard EV charger into a smart device, fully integrable with [Home Assistant](https://www.home-assistant.io/).
 
+Before assembling the hardware or flashing ESPHome, make sure you already run [EVCC](https://evcc.io/). EVCC is the **brain** of the solution: it orchestrates charging sessions, optimizes them against tariffs or PV surplus, and exposes the high-level logic that this project relies on. Without EVCC there is no smart control layer to talk to the ESP32 firmware.
+
+Think of the overall system as:
+
+- **EVCC — the Brain:** Provides the decision making, schedules, surplus logic, and talks Modbus/MQTT to control charging targets.
+- **ESP32 (this project) — the Bridge:** Translates EVCC commands into GPIO and Modbus actions, exposes sensors back to EVCC/Home Assistant, and keeps the communication reliable.
+- **EVSE DIN Controller — the Muscle:** The physical hardware that enforces the requested current limits and safely enables or disables power delivery to the car.
+
+The EV side hardware is the [EVSE DIN controller](https://www.evracing.cz/evse-din/); this firmware uses its Modbus register map to issue commands and read status information.
+
 See AI generated video with about this project, the intentions and goals: https://youtu.be/nh9oXZltK5U
 
 The primary goal is to enable intelligent EV charging, allowing for features like solar surplus charging, scheduled charging based on electricity tariffs, and remote monitoring and control.

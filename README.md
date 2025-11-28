@@ -10,6 +10,8 @@ This project provides a complete [ESPHome](https://esphome.io/) configuration to
 
 Before assembling the hardware or flashing ESPHome, make sure you already run [EVCC](https://evcc.io/). EVCC is the **brain** of the solution: it orchestrates charging sessions, optimizes them against tariffs or PV surplus, and exposes the high-level logic that this project relies on. Without EVCC there is no smart control layer to talk to the ESP32 firmware.
 
+Note! This is a pretty complex software and hardware project, highly customized to my specific situation. I provide this for inspiration for others that want to build for cheap their own highly advanced EV charging solution. It comes with no guarantees!
+
 Think of the overall system as:
 
 - **EVCC — the Brain:** Provides the decision making, schedules, surplus logic, and talks Modbus/MQTT to control charging targets.
@@ -82,11 +84,12 @@ Communication with the EVSE DIN controller is handled via Modbus RTU over an RS4
 
     *To find the exact GPIO pins used for `TX`, `RX`, and flow control, check the `uart:` section within the `evse/modbus.yaml` file.*
 
-2.  **Connect the RS485 module to the Modbus bus:**
-    -   RS485 Module `A` → EVSE Controller Modbus `A` terminal
-    -   RS485 Module `B` → EVSE Controller Modbus `B` terminal
+2.  **Connect the ESP32 module to the Modbus bus:**
+    -   Since I do not own the native RS485 modbus ready EVSE DIN Module, i used the serial communication instead.
+    -   If you own a EVSE DIN that includes a native RS485 modbus module, you can change this project such that the Waveshare communicates directly with the   
+        Modbus connectors.    
 
-    *Note: If you are also using a Modbus energy meter, it should be connected to the same A/B bus lines in parallel.*
+    *Note: I use a seperate Power meter that exposes the data through Home Assistant.
 
 ### Relays for Phase Switching
 

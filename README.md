@@ -75,7 +75,7 @@ Properly wiring the components is critical for the system to function correctly 
 
 ### ESP32 to EVSE DIN Controller (Modbus RTU)
 
-Communication with the EVSE DIN controller is handled via Modbus RTU over an RS485 serial connection. You will need an **RS485 to TTL converter module** to interface between the ESP32 and the controller.
+Communication with the EVSE DIN controller is handled via Modbus RTU over an RS485 serial connection. you can directly connect the wires between the evse din serial pins and the gpio hat pins of the Waveshare
 
 1.  **Connect the ESP32 to the RS485 to TTL module:**
     -   ESP32 `TX` pin → RS485 Module `DI` (Data Input)

@@ -1,12 +1,14 @@
 # ESPHome Smart EVSE Controller for Waveshare ESP32-S3
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/paulkastelijn/Wavesare-ESP32-S3-Relay_6CH)
-![GitHub stars](https://img.shields.io/github/stars/paulkastelijn/Wavesare-ESP32-S3-Relay_6CH)
-![GitHub license](https://img.shields.io/github/license/paulkastelijn/Wavesare-ESP32-S3-Relay_6CH)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/paulkastelijn/Smart-Controller-EVSE-DIN)
+![GitHub stars](https://img.shields.io/github/stars/paulkastelijn/Smart-Controller-EVSE-DIN)
+![GitHub license](https://img.shields.io/github/license/paulkastelijn/Smart-Controller-EVSE-DIN)
 
 Maintained by [Paul Kastelijn](https://github.com/paulkastelijn) — last updated on **28 November 2025**.
 
 This project provides a complete [ESPHome](https://esphome.io/) configuration to build a smart Electric Vehicle Supply Equipment (EVSE) controller using a Waveshare ESP32-S3 board (like the Waveshare ESP32-S3-Relay-CH6 relay board). It turns a standard EV charger into a smart device, fully integrable with [Home Assistant](https://www.home-assistant.io/).
+
+See AI generated video with about this project, the intentions and goals: https://youtu.be/nh9oXZltK5U
 
 The primary goal is to enable intelligent EV charging, allowing for features like solar surplus charging, scheduled charging based on electricity tariffs, and remote monitoring and control.
 
@@ -37,6 +39,60 @@ The ESPHome configuration is broken down into multiple YAML files for clarity an
 
 ```
 waveshare-esp32s3.yaml      # Main configuration file, includes all others
+secrets.yaml                # Your private credentials (WiFi, passwords, etc.)
+evse/
+├── substitutions.yaml      # User-specific values (device name, etc.)
+├── device.yaml             # Core device definition (board type, project info)
+├── base.yaml               # Base components (WiFi, API, Web Server, Logger)
+├── modbus.yaml             # Modbus component setup for EVSE controller
+├── globals.yaml            # Global variables for internal state
+├── sensors.yaml            # Sensor definitions (from Modbus, etc.)
+├── text_sensors.yaml       # Text sensor definitions
+├── binary_sensors.yaml     # Binary sensor definitions (e.g., charger status)
+├── switches.yaml           # Switch entities for Home Assistant
+├── outputs.yaml            # GPIO output definitions (LEDs)
+├── numbers.yaml            # Number entities for setting values (e.g., charge current)
+├── buttons.yaml            # Button entities for triggering actions
+├── scripts.yaml            # Reusable automation scripts
+└── intervals.yaml          # Timed interval components
+```
+
+## Wiring and Connections
+
+Properly wiring the components is critical for the system to function correctly and safely. The pin assignments are defined across several YAML files in the `evse/` directory.
+
+### ESP32 to EVSE DIN Controller (Modbus RTU)
+
+Communication with the EVSE DIN controller is handled via Modbus RTU over an RS485 serial connection. You will need an **RS485 to TTL converter module** to interface between the ESP32 and the controller.
+
+1.  **Connect the ESP32 to the RS485 to TTL module:**
+    -   ESP32 `TX` pin → RS485 Module `DI` (Data Input)
+    -   ESP32 `RX` pin → RS485 Module `RO` (Receiver Output)
+    -   ESP32 `GPIO` pin for flow control → RS485 Module `DE` and `RE` (Driver/Receiver Enable, often jumpered together)
+
+    *To find the exact GPIO pins used for `TX`, `RX`, and flow control, check the `uart:` section within the `evse/modbus.yaml` file.*
+
+2.  **Connect the RS485 module to the Modbus bus:**
+    -   RS485 Module `A` → EVSE Controller Modbus `A` terminal
+    -   RS485 Module `B` → EVSE Controller Modbus `B` terminal
+
+    *Note: If you are also using a Modbus energy meter, it should be connected to the same A/B bus lines in parallel.*
+
+### Relays for Phase Switching
+
+This project is designed for the **Waveshare ESP32-S3-Relay-CH6**, which has 6 on-board relays. These are used to control the main contactor and switch between 1-phase and 3-phase charging.
+
+-   **Relay 1 (Contactor):** Controls the main power of the secondary contactor of the EVSE, controling phase 2 and 3. The first contactor should be connected to the DIN EVSE and controlls Phases 1, 2 and 3. The First and second contactor should be connected in series for phases 2 and 3, so that the secondary contactor will swithch phase 2 and 3. Phase swithching is in compliance with the safety standards for EV charging, ensure switching will only occur of no power is on the releays. 
+
+### Status LED
+-   **Relay 2, 3 and 4 (for external collored led ring powering):** Used to switch the led ring of an evbox. in this project this wil switch a 12 volts ledring Green, Blue and Red
+
+*The specific GPIO pins connected to these relays are defined in the `switch:` section of the `evse/switches.yaml` file. Verify your wiring matches these definitions.*
+
+The ESPHome configuration is broken down into multiple YAML files for clarity and maintainability. They are all located in the `evse/` directory and included by the main `waveshare-esp32s3.yaml` file.
+
+```
+waveshare-esp32s3.yaml      # Main configuration file, includes all others
 evse/
 ├── substitutions.yaml      # User-specific values (WiFi, device name, etc.)
 ├── device.yaml             # Core device definition (board type, project info)
@@ -58,19 +114,16 @@ evse/
 
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/paulkastelijn/Wavesare-ESP32-S3-Relay_6CH.git
-    cd Wavesare-ESP32-S3-Relay_6CH
+    git clone https://github.com/paulkastelijn/Smart-Controller-EVSE-DIN.git
+    cd Smart-Controller-EVSE-DIN
     ```
 
 2.  **Configure Substitutions:**
-    Open the `evse/substitutions.yaml` file. This is the **only file** you should need to edit for a basic setup. Fill in the following details:
-    - `device_name`: A unique name for your EVSE controller (e.g., `garage-evse`).
-    - `wifi_ssid`: Your Wi-Fi network name.
-    - `wifi_password`: Your Wi-Fi password.
-    - `ota_password`: A password for Over-The-Air updates.
+    Open `secrets.yaml` and fill in your network credentials, passwords, and any other private information. This file is ignored by Git to protect your data.
+    Then, open `evse/substitutions.yaml` to set non-sensitive, device-specific parameters like `device_name`.
 
 3.  **Review Pin Assignments:**
-    The default GPIO pin assignments are defined in files like `outputs.yaml`, `switches.yaml`, and `modbus.yaml`. If your wiring differs from the intended setup for the Waveshare board, you will need to adjust the `pin:` values in these files accordingly.
+    Before flashing, carefully review the pin assignments in `evse/modbus.yaml`, `evse/switches.yaml`, and `evse/outputs.yaml` to ensure they match your physical wiring.
 
 4.  **Compile and Upload:**
     - **Using Home Assistant ESPHome Add-on:**

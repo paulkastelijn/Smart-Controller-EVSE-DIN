@@ -1,0 +1,6 @@
+button:
+  - platform: restart
+    name: "ESP Restart"
+    icon: "mdi:restart"
+    web_server:
+      sorting_group_id: system_info

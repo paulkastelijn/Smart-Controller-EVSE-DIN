@@ -1,0 +1,16 @@
+substitutions:
+  fw_ver: "9.7"
+  title: "Waveshare EVCC Bridge EVSE Controller"
+  modbus_uart_tx: "7"
+  modbus_uart_rx: "6"
+  relay_b_gpio: "1"
+  led_r_gpio: "2"
+  led_g_gpio: "42"
+  led_b_gpio: "41"
+  buzzer_gpio: "21"
+  fallback_current: "10"
+  fallback_timeout_s: "300"  # 5 minuten
+  relay_off_timeout_s: "300" # 5 minuten
+  phase_switch_retry_delay_s: "5"
+  phase_switch_retry_limit: "6"
+  phase_switch_amp_threshold: "0.8"

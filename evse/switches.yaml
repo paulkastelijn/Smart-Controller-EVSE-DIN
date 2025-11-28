@@ -1,0 +1,250 @@
+switch:
+  - platform: gpio
+    id: relay_b_hw
+    pin: ${relay_b_gpio}
+    internal: true
+    icon: "mdi:electric-switch"
+    restore_mode: RESTORE_DEFAULT_OFF
+  - platform: template
+    id: relay_b
+    name: "Relais B (L2/L3)"
+    icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: diagnostics
+    lambda: 'return id(active_phases) == 3;'
+    turn_on_action:
+      - lambda: |
+          id(desired_phases) = 3;
+          id(enqueue_phase_switch).execute();
+          id(orchestrate_charging).execute();
+          ESP_LOGI("phase_manual", "Manual phase request: 3P");
+    turn_off_action:
+      - lambda: |
+          id(desired_phases) = 1;
+          id(enqueue_phase_switch).execute();
+          id(orchestrate_charging).execute();
+          ESP_LOGI("phase_manual", "Manual phase request: 1P");
+  - platform: gpio
+    id: led_r
+    pin: ${led_r_gpio}
+    internal: true
+  - platform: gpio
+    id: led_g
+    pin: ${led_g_gpio}
+    internal: true
+  - platform: gpio
+    id: led_b
+    pin: ${led_b_gpio}
+    internal: true
+  - platform: template
+    id: manual_charge
+    name: "Handmatig Laden"
+    icon: "mdi:toggle-switch"
+    web_server:
+      sorting_group_id: manual_control
+    optimistic: true
+    turn_on_action:
+      - lambda: |
+          id(g_desired_current) = ${fallback_current};
+          id(g_desired_enabled) = true;
+          id(orchestrate_charging).execute();
+          ESP_LOGI("manual", "Manual charge ON");
+    turn_off_action:
+      - lambda: |
+          id(g_desired_enabled) = false;
+          id(orchestrate_charging).execute();
+          ESP_LOGI("manual", "Manual charge OFF");
+  - platform: template
+    id: manual_1000_override_sw
+    name: "Manual Override (1000)"
+    icon: "mdi:hand-back-right"
+    web_server:
+      sorting_group_id: manual_control
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(manual_1000_override) = true;'
+      - logger.log: "Manual 1000 override: ON"
+    turn_off_action:
+      - lambda: 'id(manual_1000_override) = false;'
+      - logger.log: "Manual 1000 override: OFF"
+  # ... (alle LED-configuratie switches uit v9.3 zijn hier behouden) ...
+  - platform: template
+    name: "State A (Standby) - Rood"
+    id: led_a_r
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_a_r);'
+    turn_on_action:
+      - lambda: 'id(g_led_a_r) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_a_r) = false;'
+  - platform: template
+    name: "State A (Standby) - Groen"
+    id: led_a_g
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_a_g);'
+    turn_on_action:
+      - lambda: 'id(g_led_a_g) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_a_g) = false;'
+  - platform: template
+    name: "State A (Standby) - Blauw"
+    id: led_a_b
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_a_b);'
+    turn_on_action:
+      - lambda: 'id(g_led_a_b) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_a_b) = false;'
+  - platform: template
+    name: "State B (Connected) - Rood"
+    id: led_b_r
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_b_r);'
+    turn_on_action:
+      - lambda: 'id(g_led_b_r) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_b_r) = false;'
+  - platform: template
+    name: "State B (Connected) - Groen"
+    id: led_b_g
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_b_g);'
+    turn_on_action:
+      - lambda: 'id(g_led_b_g) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_b_g) = false;'
+  - platform: template
+    name: "State B (Connected) - Blauw"
+    id: led_b_b
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_b_b);'
+    turn_on_action:
+      - lambda: 'id(g_led_b_b) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_b_b) = false;'
+  - platform: template
+    name: "State C (Charging) - Rood"
+    id: led_c_r
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_c_r);'
+    turn_on_action:
+      - lambda: 'id(g_led_c_r) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_c_r) = false;'
+  - platform: template
+    name: "State C (Charging) - Groen"
+    id: led_c_g
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_c_g);'
+    turn_on_action:
+      - lambda: 'id(g_led_c_g) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_c_g) = false;'
+  - platform: template
+    name: "State C (Charging) - Blauw"
+    id: led_c_b
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_c_b);'
+    turn_on_action:
+      - lambda: 'id(g_led_c_b) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_c_b) = false;'
+  - platform: template
+    name: "State D (Vent) - Rood"
+    id: led_d_r
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_d_r);'
+    turn_on_action:
+      - lambda: 'id(g_led_d_r) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_d_r) = false;'
+  - platform: template
+    name: "State D (Vent) - Groen"
+    id: led_d_g
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_d_g);'
+    turn_on_action:
+      - lambda: 'id(g_led_d_g) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_d_g) = false;'
+  - platform: template
+    name: "State D (Vent) - Blauw"
+    id: led_d_b
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_d_b);'
+    turn_on_action:
+      - lambda: 'id(g_led_d_b) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_d_b) = false;'
+  - platform: template
+    name: "State E (Error) - Rood"
+    id: led_e_r
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_e_r);'
+    turn_on_action:
+      - lambda: 'id(g_led_e_r) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_e_r) = false;'
+  - platform: template
+    name: "State E (Error) - Groen"
+    id: led_e_g
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_e_g);'
+    turn_on_action:
+      - lambda: 'id(g_led_e_g) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_e_g) = false;'
+  - platform: template
+    name: "State E (Error) - Blauw"
+    id: led_e_b
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: led_config
+    optimistic: true
+    lambda: 'return id(g_led_e_b);'
+    turn_on_action:
+      - lambda: 'id(g_led_e_b) = true;'
+    turn_off_action:
+      - lambda: 'id(g_led_e_b) = false;'

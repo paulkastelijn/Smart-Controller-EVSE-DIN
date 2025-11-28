@@ -1,0 +1,21 @@
+# Hoofdconfiguratiebestand voor de Waveshare EVSE Controller.
+# Dit bestand laadt de configuratie uit de verschillende deelbestanden in de 'evse' map.
+
+# Laad eerst de substituties. Deze zijn nodig voor de andere bestanden.
+<<: !include evse/substitutions.yaml
+
+# Laad de overige configuratiebestanden.
+# De volgorde is belangrijk, omdat sommige bestanden afhankelijk zijn van andere.
+<<: !include evse/device.yaml
+<<: !include evse/base.yaml
+<<: !include evse/modbus.yaml
+<<: !include evse/globals.yaml
+<<: !include evse/text_sensors.yaml
+<<: !include evse/scripts.yaml
+<<: !include evse/intervals.yaml
+<<: !include evse/sensors.yaml
+<<: !include evse/binary_sensors.yaml
+<<: !include evse/switches.yaml
+<<: !include evse/outputs.yaml
+<<: !include evse/numbers.yaml
+<<: !include evse/buttons.yaml

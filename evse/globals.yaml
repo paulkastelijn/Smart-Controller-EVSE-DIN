@@ -1,0 +1,129 @@
+globals:
+  # EVCC & Fallback Status
+  - id: fallback_active
+    type: bool
+    initial_value: 'false'
+  - id: g_offline_start_time
+    type: uint32_t
+    initial_value: '0'
+  - id: last_evcc_message_time
+    type: float
+    initial_value: '0.0'
+
+  # Gewenste laadstatus (aangestuurd door EVCC)
+  - id: g_desired_enabled
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+  - id: g_desired_current
+    type: int
+    initial_value: '6'
+    restore_value: yes
+
+  # Fase-schakeling
+  - id: desired_phases
+    type: int
+    initial_value: '1'
+  - id: active_phases
+    type: int
+    initial_value: '1'
+  - id: queue_phase_switch
+    type: bool
+    initial_value: 'false'
+  - id: g_phase_switch_cooldown
+    type: bool
+    initial_value: 'false'
+  - id: g_phase_switch_retry_at
+    type: uint32_t
+    initial_value: '0'
+  - id: g_phase_switch_wait_started
+    type: uint32_t
+    initial_value: '0'
+  - id: g_phase_switch_state
+    type: int
+    initial_value: '0'
+  - id: g_phase_switch_error
+    type: std::string
+    initial_value: '""'
+  - id: g_phase_switch_attempts
+    type: int
+    initial_value: '0'
+
+  # Systeembeheer
+  - id: g_system_busy
+    type: bool
+    initial_value: 'false'
+  - id: g_relay_off_countdown
+    type: int
+    initial_value: '${relay_off_timeout_s}'
+
+  # Handmatige override & relais-slijtage
+  - id: manual_1000_override
+    type: bool
+    initial_value: 'false'
+  - id: g_relay_switch_count
+    type: int
+    initial_value: '0'
+    restore_value: yes
+
+  # LED Configuratie Globals (uit v9.3)
+  - id: g_led_a_r
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes # Verwijderd om defaults te forceren bij elke boot
+  - id: g_led_a_g
+    type: bool
+    initial_value: 'true'
+    # restore_value: yes
+  - id: g_led_a_b
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_b_r
+    type: bool
+    initial_value: 'false' # Aangepast naar jouw wens voor State B = Groen
+    # restore_value: yes
+  - id: g_led_b_g
+    type: bool
+    initial_value: 'true'
+    # restore_value: yes
+  - id: g_led_b_b
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_c_r
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_c_g
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_c_b
+    type: bool
+    initial_value: 'true'
+    # restore_value: yes
+  - id: g_led_d_r
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_d_g
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_d_b
+    type: bool
+    initial_value: 'true'
+    # restore_value: yes
+  - id: g_led_e_r
+    type: bool
+    initial_value: 'true'
+    # restore_value: yes
+  - id: g_led_e_g
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes
+  - id: g_led_e_b
+    type: bool
+    initial_value: 'false'
+    # restore_value: yes

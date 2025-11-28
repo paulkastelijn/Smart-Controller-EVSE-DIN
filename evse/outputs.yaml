@@ -1,0 +1,5 @@
+output:
+  - platform: ledc
+    id: buzzer_out
+    pin: ${buzzer_gpio}
+    frequency: 2000 Hz

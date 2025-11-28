@@ -1,0 +1,55 @@
+interval:
+  - interval: 1s
+    then:
+      - lambda: |
+          if (id(queue_phase_switch) && !id(g_system_busy)) {
+            uint32_t now = millis();
+            if (id(g_phase_switch_retry_at) == 0 || now >= id(g_phase_switch_retry_at)) {
+              ESP_LOGI("phase_queue", "Start veilige fase-wissel uit wachtrij (%dP -> %dP).", id(active_phases), id(desired_phases));
+              id(queue_phase_switch) = false;
+              id(safe_phase_switch).execute();
+            }
+          }
+  - interval: 1s
+    then:
+      - script.execute: fallback_watchdog
+  - interval: 1s
+    then:
+      - lambda: |
+          if ((int)id(evse_state).state >= 3) {
+            id(g_relay_off_countdown) = ${relay_off_timeout_s};
+          }
+          else if (id(relay_b_hw).state) {
+            if (id(g_relay_off_countdown) > 0) {
+              id(g_relay_off_countdown)--;
+              if (id(g_relay_off_countdown) == 0) {
+                ESP_LOGI("relay_timer", "Relais B inactiviteit-timeout. Schakel veilig naar 1-fase.");
+                id(desired_phases) = 1;
+                id(enqueue_phase_switch).execute();
+                id(orchestrate_charging).execute();
+                id(g_relay_off_countdown) = -1;
+              }
+            }
+          }
+  - interval: 25s
+    then:
+      # Periodieke heartbeat voor de 'enabled' status.
+      # Dit voorkomt de "charger enabled: outdated" fout in EVCC.
+      - mqtt.publish:
+          topic: evse/status/enabled
+          payload: !lambda 'return id(g_desired_enabled) ? "true" : "false";'
+          retain: true
+      # Periodieke heartbeat voor de actieve fasen.
+      - mqtt.publish:
+          topic: evse/status/active_phases
+          payload: !lambda 'return std::to_string(id(active_phases));'
+          retain: true
+      # Periodieke heartbeat voor de EVSE state (A, B, C...).
+      - mqtt.publish:
+          topic: evse/status/state
+          payload: !lambda |
+            int v = (int)id(evse_state).state;
+            if (v == 1) return "A"; if (v == 2) return "B";
+            if (v == 3) return "C"; if (v == 4) return "D";
+            return "E";
+          retain: true

@@ -1,0 +1,94 @@
+logger:
+  id: main_logger
+  level: DEBUG
+
+select:
+  - platform: template
+    id: logger_level_select
+    name: "Logger Niveau"
+    icon: "mdi:tune"
+    web_server:
+      sorting_group_id: debug_log
+      sorting_weight: 1
+    options: ["INFO", "NONE", "ERROR", "WARN", "DEBUG", "VERBOSE"]
+    restore_value: yes
+    optimistic: true
+    on_value:
+      - logger.log:
+          format: "Logger niveau wordt direct ingesteld op: %s"
+          args: ['x.c_str()']
+      - lambda: |
+          if (x == "NONE") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_NONE);
+          else if (x == "ERROR") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_ERROR);
+          else if (x == "WARN") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_WARN);
+          else if (x == "INFO") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_INFO);
+          else if (x == "DEBUG") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_DEBUG);
+          else if (x == "VERBOSE") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_VERBOSE);
+
+web_server:
+  version: 3
+  port: 80
+  auth:
+    username: !secret webuser
+    password: !secret webpass
+  sorting_groups:
+    - id: mqtt_group
+      name: "📡 MQTT Communicatie"
+      sorting_weight: 10
+    - id: modbus_control
+      name: "⚡ Modbus Aansturing"
+      sorting_weight: 20
+    - id: modbus_status
+      name: "📊 Modbus Status"
+      sorting_weight: 30
+    - id: phase_currents
+      name: "⚡ Fase Stromen (HA)"
+      sorting_weight: 32
+    - id: led_config
+      name: "💡 LED Configuratie"
+      sorting_weight: 35
+    - id: manual_control
+      name: "🎛️ Handmatige Besturing"
+      sorting_weight: 40
+    - id: system_info
+      name: "🖥️ Systeem Info"
+      sorting_weight: 50
+    - id: debug_log
+      name: "🐞 Debug Log"
+      sorting_weight: 55
+    - id: diagnostics
+      name: "🔧 Diagnostiek"
+      sorting_weight: 60
+
+api:
+  encryption:
+    key: !secret esphomeapikeyEVSE
+  reboot_timeout: 0min
+
+ota:
+  platform: esphome
+  password: !secret otapassword
+
+wifi:
+  ssid: !secret wifissid
+  password: !secret wifipassword
+  power_save_mode: NONE
+  manual_ip:
+    static_ip: !secret staticipevse
+    gateway: !secret gateway
+    subnet: 255.255.255.0
+  ap:
+    ssid: "EVSE-Setup"
+    password: !secret fallbackpassword
+
+mqtt:
+  broker: !secret mqttbroker
+  username: !secret mqttusername
+  password: !secret mqttpassword
+  discovery: false
+  birth_message:
+    topic: evse/status/online
+    payload: "online"
+  will_message:
+    topic: evse/status/online
+    payload: "offline"

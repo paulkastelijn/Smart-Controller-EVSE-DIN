@@ -1,0 +1,292 @@
+script:
+  # --- HELPER SCRIPT: ENQUEUE_PHASE_SWITCH ---
+  - id: enqueue_phase_switch
+    mode: restart
+    then:
+      - lambda: |
+          if (id(active_phases) == id(desired_phases)) {
+            id(queue_phase_switch) = false;
+            id(g_phase_switch_state) = 0;
+            id(g_phase_switch_retry_at) = 0;
+            id(g_phase_switch_wait_started) = 0;
+            id(g_phase_switch_error).clear();
+            return;
+          }
+          id(queue_phase_switch) = true;
+          id(g_phase_switch_retry_at) = 0;
+          id(g_phase_switch_state) = 1;
+          id(g_phase_switch_wait_started) = 0;
+          id(g_phase_switch_error).clear();
+          id(g_phase_switch_attempts) = 0;
+          ESP_LOGI("phase_queue", "Phase switch queued. Active: %dP -> Desired: %dP", id(active_phases), id(desired_phases));
+      - mqtt.publish:
+          topic: evse/status/phase_switch
+          payload: !lambda |
+            return "queued:" + std::to_string(id(desired_phases));
+          retain: true
+  # --- HOOFD SCRIPT: ORCHESTRATE_CHARGING ---
+  - id: orchestrate_charging
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(g_system_busy) || id(manual_1000_override);'
+          then:
+            - logger.log:
+                level: WARN
+                format: "Orchestrator genegeerd: systeem is bezet of in manual override."
+            - script.stop: orchestrate_charging
+      - logger.log: "Orchestrator gestart..."
+      - if:
+          condition:
+            lambda: 'return id(desired_phases) != id(active_phases);'
+          then:
+            - logger.log:
+                format: "Fase-wissel nodig (actief: %dP, gewenst: %dP)."
+                args:
+                  - 'id(active_phases)'
+                  - 'id(desired_phases)'
+            - if:
+                condition:
+                  lambda: 'return !id(queue_phase_switch);'
+                then:
+                  - script.execute: enqueue_phase_switch
+                else:
+                  - logger.log:
+                      level: DEBUG
+                      format: "Fase-wissel al in wachtrij."
+            - script.stop: orchestrate_charging
+      - if:
+          condition:
+            lambda: 'return id(g_desired_enabled);'
+          then:
+            - logger.log:
+                format: "Actie: Laden starten/bijwerken naar %dA."
+                args:
+                  - 'id(g_desired_current)'
+            - lambda: |
+                auto call = id(maxcurrent_internal).make_call();
+                call.set_value(id(g_desired_current));
+                call.perform();
+            - mqtt.publish:
+                topic: evse/status/enabled
+                payload: "true"
+                retain: true
+          else:
+            - logger.log: "Actie: Laden stoppen (stroom naar 0A)."
+            - lambda: |
+                auto call = id(maxcurrent_internal).make_call();
+                call.set_value(0);
+                call.perform();
+            - mqtt.publish:
+                topic: evse/status/enabled
+                payload: "false"
+                retain: true
+      - logger.log: "Orchestrator voltooid."
+  # --- VEILIGHEIDSSCRIPT: SAFE_PHASE_SWITCH ---
+  - id: safe_phase_switch
+    mode: single
+    then:
+      - lambda: |
+          id(g_system_busy) = true;
+          id(queue_phase_switch) = false;
+          id(g_phase_switch_state) = 2;
+          id(g_phase_switch_wait_started) = 0;
+          id(g_phase_switch_error).clear();
+      - lambda: 'id(g_phase_switch_attempts)++;'
+      - if:
+          condition:
+            lambda: 'return id(g_phase_switch_attempts) > ${phase_switch_retry_limit};'
+          then:
+            - logger.log:
+                level: ERROR
+                format: "Fase-wissel afgebroken: te veel pogingen (%d)."
+                args:
+                  - 'id(g_phase_switch_attempts)'
+            - lambda: |
+                id(g_system_busy) = false;
+                id(queue_phase_switch) = false;
+                id(g_phase_switch_state) = 0;
+                id(g_phase_switch_error) = "too_many_attempts";
+                id(g_phase_switch_retry_at) = 0;
+                id(g_phase_switch_wait_started) = 0;
+            - mqtt.publish:
+                topic: evse/status/phase_switch
+                payload: "aborted:too_many_attempts"
+                retain: true
+            - script.execute: orchestrate_charging
+            - logger.log: "Veilige fase-wissel gestopt wegens te veel pogingen."
+            - script.stop: safe_phase_switch
+      - mqtt.publish:
+          topic: evse/status/phase_switch
+          payload: !lambda |
+            return "executing:" + std::to_string(id(desired_phases));
+          retain: true
+      - logger.log: "Start veilige fase-wissel..."
+      - logger.log: "Stap 1: Stop laden (0A)."
+      - lambda: |
+          auto call_stop = id(maxcurrent_internal).make_call();
+          call_stop.set_value(0);
+          call_stop.perform();
+      - delay: 300ms
+      - lambda: 'id(g_phase_switch_wait_started) = millis();'
+      - logger.log: "Stap 2: Wacht op veilige status (A/B)."
+      - wait_until:
+          condition:
+            lambda: |
+              if ((int)id(evse_state).state > 2) {
+                return false;
+              }
+              float l1 = id(ha_l1_amps).state;
+              float l2 = id(ha_l2_amps).state;
+              float l3 = id(ha_l3_amps).state;
+              if (!(l1 == l1) || !(l2 == l2) || !(l3 == l3)) {
+                return false;
+              }
+              const float threshold = ${phase_switch_amp_threshold};
+              if (fabsf(l1) > threshold) return false;
+              if (fabsf(l2) > threshold) return false;
+              if (fabsf(l3) > threshold) return false;
+              return true;
+          timeout: 10s
+      - if:
+          condition:
+            lambda: |
+              bool ev_safe = (int)id(evse_state).state <= 2;
+              float l1 = id(ha_l1_amps).state;
+              float l2 = id(ha_l2_amps).state;
+              float l3 = id(ha_l3_amps).state;
+              bool ha_valid = (l1 == l1) && (l2 == l2) && (l3 == l3);
+              const float threshold = ${phase_switch_amp_threshold};
+              bool ha_safe = ha_valid &&
+                             fabsf(l1) <= threshold &&
+                             fabsf(l2) <= threshold &&
+                             fabsf(l3) <= threshold;
+              return !(ev_safe && ha_safe);
+          then:
+            - logger.log:
+                level: ERROR
+                format: "Fout bij fase-wissel: voorwaarden niet gehaald (state=%d, L1=%.2fA, L2=%.2fA, L3=%.2fA)."
+                args:
+                  - '(int)id(evse_state).state'
+                  - 'id(ha_l1_amps).state'
+                  - 'id(ha_l2_amps).state'
+                  - 'id(ha_l3_amps).state'
+            - lambda: |
+                uint32_t now = millis();
+                bool ev_safe = (int)id(evse_state).state <= 2;
+                float l1 = id(ha_l1_amps).state;
+                float l2 = id(ha_l2_amps).state;
+                float l3 = id(ha_l3_amps).state;
+                bool ha_valid = (l1 == l1) && (l2 == l2) && (l3 == l3);
+                const float threshold = ${phase_switch_amp_threshold};
+                bool ha_safe = ha_valid &&
+                               fabsf(l1) <= threshold &&
+                               fabsf(l2) <= threshold &&
+                               fabsf(l3) <= threshold;
+                id(g_system_busy) = false;
+                id(queue_phase_switch) = true;
+                id(g_phase_switch_state) = 1;
+                id(g_phase_switch_retry_at) = now + ${phase_switch_retry_delay_s} * 1000;
+                id(g_phase_switch_wait_started) = 0;
+                if (!ev_safe) {
+                  id(g_phase_switch_error) = "timeout_safe_state";
+                } else if (!ha_valid) {
+                  id(g_phase_switch_error) = "ha_data_unavailable";
+                } else if (!ha_safe) {
+                  id(g_phase_switch_error) = "ha_current_high";
+                } else {
+                  id(g_phase_switch_error) = "unknown_wait_failure";
+                }
+            - mqtt.publish:
+                topic: evse/status/phase_switch
+                payload: !lambda 'return "failed:" + id(g_phase_switch_error);'
+                retain: true
+            - script.stop: safe_phase_switch
+      - logger.log: "Stap 3: Relais schakelen."
+      - lambda: |
+          id(g_phase_switch_state) = 3;
+          id(g_phase_switch_wait_started) = 0;
+      - delay: 500ms
+      - if:
+          condition: { lambda: 'return id(desired_phases) == 3 && !id(relay_b_hw).state;' }
+          then:
+            - logger.log: "Schakel relais B IN voor 3-fase laden."
+            - switch.turn_on: relay_b_hw
+            - lambda: 'id(g_relay_switch_count)++;'
+            - delay: 1500ms
+      - if:
+          condition: { lambda: 'return id(desired_phases) == 1 && id(relay_b_hw).state;' }
+          then:
+            - logger.log: "Schakel relais B UIT voor 1-fase laden."
+            - switch.turn_off: relay_b_hw
+            - lambda: 'id(g_relay_switch_count)++;'
+            - delay: 1500ms
+      - logger.log: "Stap 4: Status bijwerken."
+      - lambda: |
+          id(active_phases) = id(desired_phases);
+          id(queue_phase_switch) = false;
+          id(g_phase_switch_state) = 0;
+          id(g_phase_switch_error).clear();
+          id(g_phase_switch_retry_at) = 0;
+          id(g_phase_switch_wait_started) = 0;
+          id(g_phase_switch_attempts) = 0;
+      - mqtt.publish:
+          topic: evse/status/active_phases
+          payload: !lambda 'return std::to_string(id(active_phases));'
+          retain: true
+      - mqtt.publish:
+          topic: evse/status/phase_switch
+          payload: !lambda |
+            return "success:" + std::to_string(id(active_phases));
+          retain: true
+      - logger.log: "Stap 5: Systeem vrijgeven en her-orkestreren."
+      - lambda: 'id(g_system_busy) = false;'
+      - script.execute: orchestrate_charging
+      - logger.log: "Veilige fase-wissel voltooid."
+
+  # --- WATCHDOG SCRIPT: FALLBACK_WATCHDOG ---
+  - id: fallback_watchdog
+    mode: queued
+    then:
+      - if:
+          condition: { lambda: 'return id(g_system_busy);' }
+          then:
+            - logger.log:
+                level: DEBUG
+                format: "Fallback watchdog gepauzeerd (systeem bezet)."
+            - script.stop: fallback_watchdog
+      - lambda: |
+          // Gebruik de nieuwe sensor om te bepalen of EVCC offline is
+          bool is_offline = !id(evcc_online_status).state;
+          bool timeout_reached = (id(g_offline_start_time) != 0) && ((millis() - id(g_offline_start_time)) / 1000 >= ${fallback_timeout_s});
+          bool vehicle_present = ((int)id(evse_state).state >= 2);
+          if (is_offline && timeout_reached && vehicle_present && !id(fallback_active)) {
+            id(fallback_active) = true;
+            ESP_LOGW("fallback", "EVCC offline > %ds. Fallback geactiveerd.", ${fallback_timeout_s});
+            id(g_desired_enabled) = true;
+            id(g_desired_current) = ${fallback_current};
+            id(desired_phases) = 1;
+            id(enqueue_phase_switch).execute();
+            id(orchestrate_charging).execute();
+          }
+          else if (id(fallback_active) && !is_offline) {
+            id(fallback_active) = false;
+            ESP_LOGI("fallback", "EVCC weer online. Fallback gedeactiveerd.");
+          }
+
+  # --- LED SCRIPT (uit v9.3) ---
+  - id: update_leds
+    mode: restart
+    then:
+      - lambda: |
+          int state = (int) id(evse_state).state;
+          bool R = false, G = false, B = false;
+          if (state == 1) { R = id(g_led_a_r); G = id(g_led_a_g); B = id(g_led_a_b); }
+          else if (state == 2) { R = id(g_led_b_r); G = id(g_led_b_g); B = id(g_led_b_b); }
+          else if (state == 3) { R = id(g_led_c_r); G = id(g_led_c_g); B = id(g_led_c_b); }
+          else if (state == 4) { R = id(g_led_d_r); G = id(g_led_d_g); B = id(g_led_d_b); }
+          else { R = id(g_led_e_r); G = id(g_led_e_g); B = id(g_led_e_b); }
+          if (R) id(led_r).turn_on(); else id(led_r).turn_off();
+          if (G) id(led_g).turn_on(); else id(led_g).turn_off();
+          if (B) id(led_b).turn_on(); else id(led_b).turn_off();

@@ -1,0 +1,28 @@
+binary_sensor:
+  - platform: template
+    id: charging_active
+    name: "Charging Active"
+    icon: "mdi:power-plug"
+    web_server:
+      sorting_group_id: modbus_status
+    lambda: 'return (int)id(evse_state).state >= 3;'
+
+  - platform: status
+    name: "EVCC Online Status"
+    id: evcc_online_status
+    on_state:
+      - if:
+          condition:
+            lambda: 'return !x;' # Als de status naar OFF gaat
+          then:
+            - lambda: 'id(g_offline_start_time) = millis();'
+          else:
+            - lambda: 'id(g_offline_start_time) = 0;'
+
+  - platform: template
+    id: fallback_status
+    name: "Fallback Active"
+    icon: "mdi:auto-mode"
+    web_server:
+      sorting_group_id: mqtt_group
+    lambda: 'return id(fallback_active);'

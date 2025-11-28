@@ -1,0 +1,39 @@
+number:
+  - platform: modbus_controller
+    id: maxcurrent_internal
+    name: "EVSE Max Current (Write)"
+    modbus_controller_id: evse
+    icon: "mdi:current-ac"
+    address: 1000
+    register_type: holding
+    value_type: U_WORD
+    min_value: 0
+    max_value: 16
+    step: 1
+    unit_of_measurement: "A"
+    web_server:
+      sorting_group_id: modbus_control
+    use_write_multiple: true
+  - platform: template
+    id: manual_1000_set
+    name: "EVSE Max Current (Manual)"
+    icon: "mdi:hand-back-right"
+    web_server:
+      sorting_group_id: manual_control
+    optimistic: true
+    unit_of_measurement: "A"
+    min_value: 0
+    max_value: 16
+    step: 1
+    set_action:
+      - lambda: |
+          int val = (int) x;
+          if (!id(manual_1000_override)) {
+            ESP_LOGW("manual", "Manual 1000 set genegeerd: override is UIT.");
+            return;
+          }
+          if (val != 0 && val < 6) val = 6;
+          auto call = id(maxcurrent_internal).make_call();
+          call.set_value(val);
+          call.perform();
+          ESP_LOGI("manual", "Handmatige wegschrijving naar reg 1000: %d A", val);

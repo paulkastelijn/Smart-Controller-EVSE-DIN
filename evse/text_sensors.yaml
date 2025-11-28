@@ -1,0 +1,269 @@
+text_sensor:
+  # --- EVCC MQTT Commando's ---
+  - platform: mqtt_subscribe
+    id: evcc_enable_cmd
+    name: "EVCC Enable Command"
+    topic: evse/cmd/enable # CORRECT TOPIC
+    icon: "mdi:power-plug"
+    web_server:
+      sorting_group_id: mqtt_group
+    on_value:
+      - lambda: |
+          bool enable = (x == "1" || x == "true");
+          if (id(g_desired_enabled) != enable) {
+            id(g_desired_enabled) = enable;
+            ESP_LOGI("evcc_cmd", "Enable command received: %s", enable ? "ON" : "OFF");
+            id(orchestrate_charging).execute();
+          }
+
+  - platform: mqtt_subscribe
+    id: evcc_current_cmd
+    name: "EVCC Current Command"
+    topic: evse/cmd/maxcurrent # CORRECT TOPIC
+    icon: "mdi:current-ac"
+    web_server:
+      sorting_group_id: mqtt_group
+    on_value:
+      - lambda: |
+          int amps = atoi(x.c_str());
+          if (amps < 6) amps = 6;
+          if (amps > 16) amps = 16;
+          if (id(g_desired_current) != amps) {
+            id(g_desired_current) = amps;
+            ESP_LOGI("evcc_cmd", "Current command received: %dA", amps);
+            id(orchestrate_charging).execute();
+          }
+
+  - platform: mqtt_subscribe
+    id: evcc_phases_cmd
+    name: "EVCC Phases Command"
+    topic: evse/cmd/phases # CORRECT TOPIC
+    icon: "mdi:phase"
+    web_server:
+      sorting_group_id: mqtt_group
+    on_value:
+      - lambda: |
+          int phases = atoi(x.c_str());
+          if (phases != 1 && phases != 3) return;
+          if (id(desired_phases) != phases) {
+            id(desired_phases) = phases;
+            id(enqueue_phase_switch).execute();
+            ESP_LOGI("evcc_cmd", "Phases command received: %dP", phases);
+            id(orchestrate_charging).execute();
+          }
+
+  # --- Overige Text Sensoren voor UI (uit v9.3) ---
+  - platform: template
+    id: control_state_text
+    name: "Controle Status"
+    icon: "mdi:state-machine"
+    update_interval: 3s
+    web_server:
+      sorting_group_id: system_info
+    lambda: |
+      char buf[256];
+      int current = (int)id(evse_max_current_rb).state;
+      int evse_s = (int)id(evse_state).state;
+      const char* state_str = "E-Error";
+      if (evse_s == 1) state_str = "A-Standby";
+      else if (evse_s == 2) state_str = "B-Connected";
+      else if (evse_s == 3) state_str = "C-Charging";
+      else if (evse_s == 4) state_str = "D-Vent";
+      snprintf(buf, sizeof(buf),
+        "State:%s | Current:%dA | Desired:%s/%dA | Phases:%dP",
+        state_str, current,
+        id(g_desired_enabled) ? "ON" : "OFF", id(g_desired_current), id(active_phases));
+      return std::string(buf);
+
+  - platform: template
+    id: evse_strategy_text
+    name: "EVSE Strategie"
+    icon: "mdi:strategy"
+    update_interval: 2s
+    web_server:
+      sorting_group_id: system_info
+    lambda: |-
+      if (id(fallback_active)) {
+        return {"Fallback: Actief"};
+      }
+      if (id(evcc_online_status).state) {
+        std::string mode = id(evcc_mode_status).state.c_str();
+        if (mode == "off") return {"EVCC: Uit"};
+        if (mode == "pv") return {"EVCC: Zonne-energie"};
+        if (mode == "minpv") return {"EVCC: Min+Zon"};
+        if (mode == "now") return {"EVCC: Snel Laden"};
+        if (!mode.empty()) return {"EVCC: " + mode};
+        return {"EVCC: Online"};
+      }
+      return {"EVCC: Offline"};
+
+  - platform: template
+    id: fallback_info
+    name: "Fallback Info"
+    icon: "mdi:information-outline"
+    update_interval: 10s
+    web_server:
+      sorting_group_id: system_info
+    lambda: |-
+      char buf[150];
+      snprintf(buf, sizeof(buf),
+        "Offline sinds: %us | Timeout: ${fallback_timeout_s}s | Actief: %s",
+        (id(g_offline_start_time) == 0) ? 0 : (unsigned int)((millis() - id(g_offline_start_time)) / 1000),
+        id(fallback_active) ? "JA" : "NEE");
+      return std::string(buf);
+  - platform: template
+    id: evcc_enable_cmd_text
+    name: "EVCC Enable Uitleg"
+    icon: "mdi:toggle-switch"
+    update_interval: 2s
+    internal: false
+    web_server:
+      sorting_group_id: system_info
+    lambda: |-
+      std::string raw = id(evcc_enable_cmd).state;
+      if (raw.empty()) {
+        return std::string("Geen EVCC commando ontvangen");
+      }
+      std::string lower;
+      lower.reserve(raw.size());
+      for (auto c : raw) {
+        lower.push_back((char)tolower((unsigned char)c));
+      }
+      if (lower == "1" || lower == "true" || lower == "on") {
+        return std::string("EVCC vraagt laden (enable=true)");
+      }
+      if (lower == "0" || lower == "false" || lower == "off") {
+        return std::string("EVCC vraagt stoppen (enable=false)");
+      }
+      return std::string("Onbekend EVCC enable-commando: ") + raw;
+  - platform: template
+    id: evse_state_text_descriptive
+    name: "EVSE State Uitleg"
+    icon: "mdi:ev-station"
+    update_interval: 2s
+    internal: false
+    web_server:
+      sorting_group_id: system_info
+    lambda: |-
+      int state = (int)id(evse_state).state;
+      switch (state) {
+        case 1: return std::string("State A - Standby (geen auto)");
+        case 2: return std::string("State B - Auto verbonden, geen laadstroom");
+        case 3: return std::string("State C - Auto laadt");
+        case 4: return std::string("State D - Ventilatie vereist");
+        case 5: return std::string("State E - Foutmelding");
+        default: {
+          char buf[40];
+          snprintf(buf, sizeof(buf), "Onbekende EVSE state (%d)", state);
+          return std::string(buf);
+        }
+      }
+  - platform: template
+    id: phase_switch_status
+    name: "Fasewissel Status"
+    icon: "mdi:timeline-clock"
+    update_interval: 1s
+    web_server:
+      sorting_group_id: system_info
+    lambda: |-
+      const uint32_t WAIT_TIMEOUT_MS = 10000;
+      const float AMP_THRESHOLD = ${phase_switch_amp_threshold};
+      const int RETRY_LIMIT = ${phase_switch_retry_limit};
+      char buf[220];
+      uint32_t now = millis();
+      int state = id(g_phase_switch_state);
+      const std::string& err = id(g_phase_switch_error);
+      int attempts = id(g_phase_switch_attempts);
+      int current_attempt = attempts < 1 ? 1 : attempts;
+      float l1 = id(ha_l1_amps).state;
+      float l2 = id(ha_l2_amps).state;
+      float l3 = id(ha_l3_amps).state;
+      auto friendly_error = [&](const std::string& code) -> const char* {
+        if (code == "timeout_safe_state") return "EVSE bleef in state C/D";
+        if (code == "ha_data_unavailable") return "Home Assistant stroomdata ontbreekt";
+        if (code == "ha_current_high") return "Fasestroom boven drempel";
+        if (code == "too_many_attempts") return "Maximaal aantal pogingen bereikt";
+        if (code == "unknown_wait_failure") return "Onbekende wachtconditie";
+        if (code.empty()) return "";
+        return code.c_str();
+      };
+      if (state == 0) {
+        if (err.empty()) {
+          snprintf(buf, sizeof(buf), "Idle | Actief: %dP", id(active_phases));
+        } else {
+          snprintf(buf, sizeof(buf), "Idle | Laatste fout: %s", friendly_error(err));
+        }
+        return std::string(buf);
+      }
+      if (state == 1) {
+        int remaining = 0;
+        if (id(g_phase_switch_retry_at) > 0 && id(g_phase_switch_retry_at) > now) {
+          remaining = (int)((id(g_phase_switch_retry_at) - now + 999) / 1000);
+        }
+        int next_attempt = attempts + 1;
+        if (next_attempt > RETRY_LIMIT) next_attempt = RETRY_LIMIT;
+        if (!err.empty()) {
+          if (remaining > 0) {
+            snprintf(buf, sizeof(buf), "In wachtrij | Naar %dP | Laatste fout: %s | Volgende poging %d/%d over %ds", id(desired_phases), friendly_error(err), next_attempt, RETRY_LIMIT, remaining);
+          } else {
+            snprintf(buf, sizeof(buf), "In wachtrij | Naar %dP | Laatste fout: %s | Volgende poging %d/%d", id(desired_phases), friendly_error(err), next_attempt, RETRY_LIMIT);
+          }
+        } else if (remaining > 0) {
+          snprintf(buf, sizeof(buf), "In wachtrij | Naar %dP | Volgende poging %d/%d over %ds", id(desired_phases), next_attempt, RETRY_LIMIT, remaining);
+        } else {
+          snprintf(buf, sizeof(buf), "In wachtrij | Naar %dP | Volgende poging %d/%d gereed", id(desired_phases), next_attempt, RETRY_LIMIT);
+        }
+        return std::string(buf);
+      }
+      if (state == 2) {
+        int remaining = 0;
+        if (id(g_phase_switch_wait_started) > 0) {
+          uint32_t elapsed = now - id(g_phase_switch_wait_started);
+          if (elapsed < WAIT_TIMEOUT_MS) {
+            remaining = (int)((WAIT_TIMEOUT_MS - elapsed + 999) / 1000);
+          }
+        }
+        snprintf(buf, sizeof(buf), "Wacht op veilige status | Naar %dP | Huidig (A): L1=%.2f L2=%.2f L3=%.2f | Drempel %.2fA | Nog %ds", id(desired_phases), l1, l2, l3, AMP_THRESHOLD, remaining);
+        return std::string(buf);
+      }
+      if (state == 3) {
+        snprintf(buf, sizeof(buf), "Relais schakelt naar %dP | Poging %d/%d", id(desired_phases), current_attempt, RETRY_LIMIT);
+        return std::string(buf);
+      }
+      snprintf(buf, sizeof(buf), "Onbekende fasewisselstaat (%d)", state);
+      return std::string(buf);
+
+  # Sensor om de EVCC laadmodus (strategie) op te vangen voor weergave
+  - platform: mqtt_subscribe
+    id: evcc_mode_status
+    name: "EVCC Mode Status"
+    topic: evcc/loadpoints/1/mode
+    internal: true # Niet direct zichtbaar in de UI, alleen gebruikt door EVSE Strategie
+
+  - platform: template
+    id: active_phases_status
+    name: "Actieve Fasen"
+    icon: "mdi:phase"
+    update_interval: 5s
+    web_server:
+      sorting_group_id: modbus_status
+    lambda: 'return std::to_string(id(active_phases));'
+
+  - platform: template
+    name: "Uptime"
+    id: uptime_human
+    icon: mdi:clock-start
+    entity_category: diagnostic
+    update_interval: 60s
+    web_server:
+      sorting_group_id: system_info
+    lambda: |
+      int seconds = (int)(id(uptime_sensor).state);
+      int days = seconds / (24 * 3600);
+      seconds %= (24 * 3600);
+      int hours = seconds / 3600;
+      seconds %= 3600;
+      int minutes = seconds / 60;
+      if (days > 0) return str_sprintf("%dd %dh %dm", days, hours, minutes);
+      if (hours > 0) return str_sprintf("%dh %dm", hours, minutes);
+      return str_sprintf("%dm", minutes);

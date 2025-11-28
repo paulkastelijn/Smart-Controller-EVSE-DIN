@@ -1,0 +1,73 @@
+sensor:
+  - platform: template
+    name: "Relay Switch Count"
+    id: relay_switch_count_sensor
+    icon: mdi:electric-switch
+    unit_of_measurement: "switches"
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: 'return id(g_relay_switch_count);'
+    web_server:
+      sorting_group_id: diagnostics
+  - platform: homeassistant
+    entity_id: sensor.laadpaal_l1_amps
+    id: ha_l1_amps
+    name: "HA L1 Amps"
+    unit_of_measurement: "A"
+    icon: mdi:alpha-l-circle
+    accuracy_decimals: 2
+    internal: false
+    on_value:
+      - lambda: 'ESP_LOGV("ha_current", "HA L1 updated: %.2fA", x);'
+    web_server:
+      sorting_group_id: phase_currents
+  - platform: homeassistant
+    entity_id: sensor.laadpaal_l2_amps
+    id: ha_l2_amps
+    name: "HA L2 Amps"
+    unit_of_measurement: "A"
+    icon: mdi:alpha-m-circle
+    accuracy_decimals: 2
+    internal: false
+    on_value:
+      - lambda: 'ESP_LOGV("ha_current", "HA L2 updated: %.2fA", x);'
+    web_server:
+      sorting_group_id: phase_currents
+  - platform: homeassistant
+    entity_id: sensor.laadpaal_l3_amps
+    id: ha_l3_amps
+    name: "HA L3 Amps"
+    unit_of_measurement: "A"
+    icon: mdi:alpha-n-circle
+    accuracy_decimals: 2
+    internal: false
+    on_value:
+      - lambda: 'ESP_LOGV("ha_current", "HA L3 updated: %.2fA", x);'
+    web_server:
+      sorting_group_id: phase_currents
+  - platform: modbus_controller
+    name: "EVSE State"
+    id: evse_state
+    icon: "mdi:ev-station"
+    modbus_controller_id: evse
+    address: 1002
+    register_type: holding
+    value_type: U_WORD
+    web_server:
+      sorting_group_id: modbus_status
+    on_value:
+      - script.execute: update_leds
+  - platform: modbus_controller
+    name: "EVSE Max Current RB"
+    id: evse_max_current_rb
+    icon: "mdi:current-ac"
+    modbus_controller_id: evse
+    address: 1000
+    register_type: holding
+    value_type: U_WORD
+    web_server:
+      sorting_group_id: modbus_status
+  - platform: uptime
+    id: uptime_sensor
+    internal: true
+  # ... (overige sensoren uit v9.3 zijn hier behouden) ...

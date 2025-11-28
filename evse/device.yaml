@@ -1,0 +1,57 @@
+esphome:
+  name: waveshare-esp32s3
+  comment: "EVSE controller - v${fw_ver} - ${title}"
+  on_boot:
+    priority: 800
+    then:
+      # Synchroniseer logger niveau bij opstarten
+      - lambda: |
+          std::string level = id(logger_level_select).state;
+          ESP_LOGI("main", "Logger niveau hersteld naar: %s", level.c_str());
+          if (level == "NONE") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_NONE);
+          else if (level == "ERROR") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_ERROR);
+          else if (level == "WARN") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_WARN);
+          else if (level == "INFO") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_INFO);
+          else if (level == "DEBUG") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_DEBUG);
+          else if (level == "VERBOSE") id(main_logger).set_log_level(ESPHOME_LOG_LEVEL_VERBOSE);
+
+      - logger.log: "Boot EVSE v${fw_ver} - ${title}"
+      - delay: 2s
+      # Initialiseer globale variabelen
+      - lambda: |
+          id(fallback_active) = false;
+          id(g_offline_start_time) = 0;
+          id(last_evcc_message_time) = 0;
+          id(g_desired_enabled) = false;
+          id(g_desired_current) = 6;
+          id(g_system_busy) = false;
+          id(active_phases) = 1;
+          id(desired_phases) = 1;
+          id(queue_phase_switch) = false;
+          id(g_phase_switch_retry_at) = 0;
+          id(g_phase_switch_wait_started) = 0;
+          id(g_phase_switch_state) = 0;
+          id(g_phase_switch_error).clear();
+          id(g_phase_switch_attempts) = 0;
+          id(manual_1000_override) = false;
+          id(g_relay_off_countdown) = ${relay_off_timeout_s};
+
+      - delay: 3s
+      # Publiceer initiële status naar MQTT
+      - mqtt.publish:
+          topic: evse/status/enabled
+          payload: "false"
+          retain: true
+      - mqtt.publish:
+          topic: evse/status/state
+          payload: "A"
+          retain: true
+      - mqtt.publish:
+          topic: evse/status/active_phases
+          payload: "1"
+          retain: true
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
